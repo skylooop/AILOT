@@ -189,7 +189,7 @@ def main(config: DictConfig):
             os.environ['CUDA_VISIBLE_DEVICES']="4"
             base_observation = jax.tree_map(lambda arr: arr[0], gc_dataset.dataset['observations'])
             returns, renders = evaluate_with_trajectories_gotil(env=env, actor=agent, 
-                                                        num_episodes=config.eval_episodes, base_observation=base_observation,
+                                                        num_episodes=config.eval_episodes, num_video_episodes=config.num_video_episodes, base_observation=base_observation,
                                                         seed=rng)
             video = record_video('Video', i, renders=renders)
             os.environ['CUDA_VISIBLE_DEVICES']="0,1,2,3,4"

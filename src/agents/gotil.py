@@ -46,15 +46,18 @@ class JointGotilAgent(eqx.Module):
         # Sample intents from current obs
         intents = eqx.filter_vmap(self.actor_intents_learner.model)(pretrain_batch['observations']).sample(seed=seed)
         # Update actor
-        updated_actor, aux_info = update_actor(self.actor_learner, pretrain_batch, self.value_net, intents)
+        updated_actor, actor_high_info = update_actor(self.actor_learner, pretrain_batch, self.value_net, intents)
         # Update ICVF using V(s, z) as advantage
-        agent, agent_gotil_info = update(self.agent_icvf, pretrain_batch, intents)
+        agent, agent_low_info = update(self.agent_icvf, pretrain_batch, intents)
         # Update intents of actor using OT
         expert_intents1, expert_intents2 = eqx.filter_jit(get_expert_intents)(self.expert_icvf.value_learner.model.psi_net, pretrain_batch['icvf_desired_goals'])
         expert_marginals1, expert_marginals2 = eqx.filter_jit(eval_ensemble)(self.expert_icvf.value_learner.model, pretrain_batch['next_observations'], pretrain_batch['icvf_desired_goals'], intents, None)
         agent_updated_v, updated_intent_actor, ot_info = ot_update(self.actor_intents_learner, self.value_net, pretrain_batch, expert_marginals1, expert_intents1, key=seed)
-
-        return dataclasses.replace(self, agent_icvf=self.agent_icvf, value_net=agent_updated_v, actor_intents_learner=updated_intent_actor, actor_learner=updated_actor), agent_gotil_info, intents
+        info = {}
+        info.update({"Low actor info": actor_high_info,
+                     "High actor info": agent_low_info,
+                     "OT info": ot_info})
+        return dataclasses.replace(self, agent_icvf=self.agent_icvf, value_net=agent_updated_v, actor_intents_learner=updated_intent_actor, actor_learner=updated_actor), info, intents
 
 @eqx.filter_jit
 def update_actor(actor_learner, batch, agent_value, intents):
@@ -202,12 +205,12 @@ def create_eqx_learner(seed: int,
                            value_net=value_net_def, config=config,
                            actor_learner=actor_learner)
     
-def evaluate_with_trajectories_gotil(env, actor, num_episodes, base_observation, seed):
+def evaluate_with_trajectories_gotil(env, actor, num_episodes, num_video_episodes, base_observation, seed):
     seed, rng = jax.random.split(seed, 2)
     renders = [] 
     returns = []
     
-    for i in range(num_episodes):
+    for i in range(num_episodes + num_video_episodes):
         if 'antmaze' in env.spec.id.lower():
             goal = env.wrapped_env.target_goal
             obs_goal = base_observation.copy()
