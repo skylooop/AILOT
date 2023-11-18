@@ -156,8 +156,6 @@ class MultilinearVF_EQX(eqx.Module):
             phi = self.phi_net(observations)
             psi = self.psi_net(outcomes)
             z = intents
-            #z = self.psi_net(intents)
-            #if icvf: else z = intents
             Tz = self.T_net(z)
             
             phi_z = self.matrix_a(Tz * phi)

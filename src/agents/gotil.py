@@ -56,7 +56,7 @@ class JointGotilAgent(eqx.Module):
         expert_marginals1, expert_marginals2 = eqx.filter_jit(eval_ensemble)(self.expert_icvf.value_learner.model, pretrain_batch['next_observations'], pretrain_batch['icvf_desired_goals'], intents, None)
         agent_updated_v, updated_intent_actor, ot_info = eqx.filter_jit(ot_update)(self.actor_intents_learner, self.value_net, pretrain_batch, expert_marginals1, expert_intents1, key=seed)
 
-        return dataclasses.replace(self, agent_icvf=agent, value_net=agent_updated_v, actor_intents_learner=updated_intent_actor, actor_learner=updated_actor), ot_info, intents
+        return dataclasses.replace(self, agent_icvf=agent, value_net=agent_updated_v, actor_intents_learner=updated_intent_actor, actor_learner=updated_actor), "hi", intents
 
 @eqx.filter_jit
 def update_actor(actor_learner, batch, agent_value, intents):
