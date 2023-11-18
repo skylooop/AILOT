@@ -1,0 +1,7 @@
+algo_name: gotil
+
+hidden_dims: [256, 256]
+expectile: 0.9
+path_to_agent_data: "antmaze-umaze-v2-noiserandomaction.hdf5"
+num_expert_trajs: 3_000
+num_agent_trajs: 2_000

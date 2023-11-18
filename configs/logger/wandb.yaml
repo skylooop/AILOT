@@ -1,0 +1,4 @@
+project: GOTIL
+group: IL_${algo.algo_name}
+offline: False
+save_code: False

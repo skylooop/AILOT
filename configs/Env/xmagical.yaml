@@ -1,0 +1,5 @@
+ds_type: xmagical
+
+modality: gripper # ['gripper', 'shortstick', 'mediumstick', 'longstick']
+video_type: same # ['same', 'cross', 'all']
+xmagical_expert_path: xmagical_ext/xmagical_replay

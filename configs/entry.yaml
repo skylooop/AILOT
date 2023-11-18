@@ -1,0 +1,17 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - GoalDS: gcds
+  - Env: antmaze-umaze
+  - algo: gotil
+  - logger: wandb
+
+seed: 42
+num_video_episodes: 2
+log_interval: 1_000
+eval_interval: 5_000
+eval_episodes: 2
+save_interval: 300_000
+batch_size: 1024
+pretrain_steps: 300_000 #1_000_002

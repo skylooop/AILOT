@@ -1,0 +1,11 @@
+ds_type: gc
+
+p_randomgoal: 0.3
+p_trajgoal: 0.5
+p_currgoal: 0.2
+geom_sample: 1
+reward_scale: 1.0
+reward_shift: -1 # -1 for icvf, 0 for hiql
+way_steps: 25
+high_p_randomgoal: 0.3
+terminal: True

@@ -1,0 +1,6 @@
+dataset_id: antmaze-umaze-v2
+
+gcrl: True
+discount: 0.99
+normalize_states: False
+normalize_rewards: True
