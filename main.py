@@ -158,6 +158,13 @@ def main(config: DictConfig):
                                     actions=example_batch['actions'],
                                     **dict(config.algo))
     
+    train_metrics = {}
+    viz_ant = d4rl_ant.GoalReachingAnt(config.Env.dataset_id.lower())
+    sample_traj_img = d4rl_ant.trajectory_image(viz_ant, [example_trajectory])
+
+    train_metrics['sample_traj'] = wandb.Image(sample_traj_img)
+    wandb.log(train_metrics)
+    
     for i in tqdm(range(1, total_steps + 1), smoothing=0.1, dynamic_ncols=True, desc="Training"):
         rng, rng1 = jax.random.split(rng, 2)
         pretrain_batch = gc_dataset.sample(config.batch_size) # not needed if expert is pretrained

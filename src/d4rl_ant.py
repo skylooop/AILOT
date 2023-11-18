@@ -125,7 +125,7 @@ class GoalReachingAnt(gym.Wrapper):
                     rect = patches.Rectangle((j *S - torso_x - S/ 2,
                                             i * S- torso_y - S/ 2),
                                             S,
-                                            S, linewidth=1, edgecolor='none', facecolor='grey', alpha=1.0)
+                                            S, linewidth=1, facecolor='RosyBrown', alpha=1.0)
 
                     ax.add_patch(rect)
         ax.set_xlim(0 - S /2 + 0.6 * S - torso_x, len(self._maze_map[0]) * S - torso_x - S/2 - S * 0.6)
@@ -191,19 +191,20 @@ def plot_policy(env, dataset, policy_fn, fig, ax, N=20, random=False, title=None
     if title:
         ax.set_title(title)
 
-def plot_trajectories(env, dataset, trajectories, fig, ax, color_list=None):
+def plot_trajectories(env, trajectories, fig, ax, color_list=None):
+    ax.scatter(*env.env.env.env._wrapped_env.target_goal, marker='x', c='red')
+    
     if color_list is None:
         from itertools import cycle
         color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
         color_list = cycle(color_cycle)
 
     for color, trajectory in zip(color_list, trajectories):        
-        obs = np.array(trajectory['observation'])
+        obs = np.array(trajectory['observations'])
         all_x = obs[:, 0]
         all_y = obs[:, 1]
-        ax.scatter(all_x, all_y, s=5, c=color, alpha=0.02)
+        ax.scatter(all_x, all_y, s=5, c=color, alpha=0.2)
         ax.scatter(all_x[-1], all_y[-1], s=50, c=color, marker='*', alpha=0.3)
-
     env.draw(ax)
 
 def gc_sampling_adaptor(policy_fn):
@@ -211,11 +212,11 @@ def gc_sampling_adaptor(policy_fn):
         return policy_fn(observations['observation'], observations['goal'], *args, **kwargs)
     return f
 
-def trajectory_image(env, dataset, trajectories, **kwargs):
+def trajectory_image(env, trajectories, **kwargs):
     fig = plt.figure(tight_layout=True)
     canvas = FigureCanvas(fig)
 
-    plot_trajectories(env, dataset, trajectories, fig, plt.gca(), **kwargs)
+    plot_trajectories(env, trajectories, fig, plt.gca(), **kwargs)
 
     plt.tight_layout()
     image = get_canvas_image(canvas)

@@ -8,7 +8,6 @@ from src.agents.icvf import update, eval_ensemble
 import dataclasses
 import optax
 from src.special_networks import MonolithicVF_EQX
-from tqdm.auto import tqdm
 
 # Optimal Transport Imports
 from collections import defaultdict
@@ -17,7 +16,6 @@ from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
 from ott.tools import plot, sinkhorn_divergence
 from ott.solvers.linear import implicit_differentiation as imp_diff
-from tqdm.auto import tqdm
 
 class JointGotilAgent(eqx.Module):
     expert_icvf: TrainTargetStateEQX
@@ -212,7 +210,6 @@ def evaluate_with_trajectories_gotil(env, actor, num_episodes, base_observation,
     for i in range(num_episodes):
         if 'antmaze' in env.spec.id.lower():
             goal = env.wrapped_env.target_goal
-            #goal = env.goal_sampler(np.random)
             obs_goal = base_observation.copy()
             obs_goal[:2] = goal
             
