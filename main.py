@@ -166,20 +166,21 @@ def main(config: DictConfig):
         agent, update_info, intents = agent.pretrain_agent(agent_dataset_batch, rng)
         debug_statistics = get_debug_statistics_icvf(agent.agent_icvf, pretrain_batch, intents)
         
-        train_metrics = {f'training/{k}': v for k, v in update_info.items()}
-        train_metrics.update({f'pretraining/debug/{k}': v for k, v in debug_statistics.items()})
-                
-        traj_metrics = get_traj_v(agent, example_trajectory, seed=rng)
-        value_viz = viz_utils.make_visual_no_image(
-            traj_metrics,
-            [functools.partial(viz_utils.visualize_metric, metric_name=k) for k in traj_metrics.keys()]
-        )
-        train_metrics['value_traj_viz'] = wandb.Image(value_viz)
-        
-        base_observation = jax.tree_map(lambda arr: arr[0], gc_dataset.dataset['observations'])
+        if i % config.log_interval == 0:
+            train_metrics = {f'training/{k}': v for k, v in update_info.items()}
+            train_metrics.update({f'pretraining/debug/{k}': v for k, v in debug_statistics.items()})
+                    
+            traj_metrics = get_traj_v(agent, example_trajectory, seed=rng)
+            value_viz = viz_utils.make_visual_no_image(
+                traj_metrics,
+                [functools.partial(viz_utils.visualize_metric, metric_name=k) for k in traj_metrics.keys()]
+            )
+            train_metrics['value_traj_viz'] = wandb.Image(value_viz)
+            wandb.log(train_metrics, step=i)
         
         if i % config.eval_interval == 0:
             os.environ['CUDA_VISIBLE_DEVICES']="4"
+            base_observation = jax.tree_map(lambda arr: arr[0], gc_dataset.dataset['observations'])
             returns, renders = evaluate_with_trajectories_gotil(env=env, actor=agent, 
                                                         num_episodes=config.eval_episodes, base_observation=base_observation,
                                                         seed=rng)
@@ -189,7 +190,7 @@ def main(config: DictConfig):
             wandb.log({'Eval Returns': returns}, step=i)
             train_metrics['video'] = video
         
-        wandb.log(train_metrics, step=i)
+            wandb.log(train_metrics, step=i)
         
         
 if __name__ == '__main__':
