@@ -18,20 +18,19 @@ def expectile_loss(adv, diff, expectile=0.8):
 
 def gotil_loss(value_fn, target_value_fn, batch, config, intents):
     # from icvf
-    (next_v1_gz, next_v2_gz) = eval_ensemble(target_value_fn, batch['next_observations'], batch['icvf_goals'], intents, None)
+    (next_v1_gz, next_v2_gz) = eval_ensemble_icvf(target_value_fn, batch['next_observations'], batch['icvf_desired_goals'], intents)
     q1_gz = batch['icvf_rewards'] + config['discount'] * batch['icvf_masks'] * next_v1_gz
     q2_gz = batch['icvf_rewards'] + config['discount'] * batch['icvf_masks'] * next_v2_gz
-    #q1_gz, q2_gz = jax.lax.stop_gradient(q1_gz), jax.lax.stop_gradient(q2_gz)
 
-    (v1_gz, v2_gz) = eval_ensemble(value_fn, batch['observations'], batch['icvf_goals'], intents, None)
-    (next_v1_zz, next_v2_zz) = eval_ensemble(target_value_fn, batch['next_observations'], batch['icvf_desired_goals'], intents, "gotil")
+    (v1_gz, v2_gz) = eval_ensemble_icvf(value_fn, batch['observations'], batch['icvf_desired_goals'], intents)
+    (next_v1_zz, next_v2_zz) = eval_ensemble_gotil(target_value_fn, batch['next_observations'], intents)
     if config['min_q']:
         next_v_zz = jnp.minimum(next_v1_zz, next_v2_zz)
     else:
         next_v_zz = (next_v1_zz + next_v2_zz) / 2.
         
     q_zz = next_v_zz
-    (v1_zz, v2_zz) = eval_ensemble(target_value_fn, batch['observations'], batch['icvf_desired_goals'], intents, "gotil")
+    (v1_zz, v2_zz) = eval_ensemble_gotil(target_value_fn, batch['observations'], intents)
     v_zz = (v1_zz + v2_zz) / 2.
     
     adv = q_zz - v_zz
@@ -44,71 +43,17 @@ def gotil_loss(value_fn, target_value_fn, batch, config, intents):
         'gotil_value_loss': value_loss,
         'gotil_abs_adv_mean': jnp.abs(advantage).mean()}
     
-    
-def icvf_loss(value_fn, target_value_fn, batch, config):
-    if config['no_intent']:
-        batch['icvf_desired_goals'] = jax.tree_map(jnp.ones_like, batch['icvf_desired_goals'])
-    ###
-    # Compute TD error for outcome s_+
-    # 1(s == s_+) + V(s', s_+, z) - V(s, s_+, z)
-    ###
-
-    (next_v1_gz, next_v2_gz) = eval_ensemble(target_value_fn, batch['next_observations'], batch['icvf_goals'], batch['icvf_desired_goals'], None)
-    q1_gz = batch['icvf_rewards'] + config['discount'] * batch['icvf_masks'] * next_v1_gz
-    q2_gz = batch['icvf_rewards'] + config['discount'] * batch['icvf_masks'] * next_v2_gz
-    q1_gz, q2_gz = jax.lax.stop_gradient(q1_gz), jax.lax.stop_gradient(q2_gz)
-
-    (v1_gz, v2_gz) = eval_ensemble(value_fn, batch['observations'], batch['icvf_goals'], batch['icvf_desired_goals'], None)
-
-    ###
-    # Compute the advantage of s -> s' under z
-    # r(s, z) + V(s', z, z) - V(s, z, z)
-    ###
-    (next_v1_zz, next_v2_zz) = eval_ensemble(target_value_fn, batch['next_observations'], batch['icvf_desired_goals'], batch['icvf_desired_goals'], None)
-    if config['min_q']:
-        next_v_zz = jnp.minimum(next_v1_zz, next_v2_zz)
-    else:
-        next_v_zz = (next_v1_zz + next_v2_zz) / 2.
-    
-    q_zz = batch['icvf_desired_rewards'] + config['discount'] * batch['icvf_desired_masks'] * next_v_zz
-    (v1_zz, v2_zz) = eval_ensemble(target_value_fn, batch['observations'], batch['icvf_desired_goals'], batch['icvf_desired_goals'], None)
-    v_zz = (v1_zz + v2_zz) / 2.
-    
-    adv = q_zz - v_zz
-        
-    value_loss1 = expectile_loss(adv, q1_gz-v1_gz, config['expectile']).mean()
-    value_loss2 = expectile_loss(adv, q2_gz-v2_gz, config['expectile']).mean()
-    value_loss = value_loss1 + value_loss2
-
-    def masked_mean(x, mask):
-        return (x * mask).sum() / (1e-5 + mask.sum())
-
-    advantage = adv
-    return value_loss, {
-        'value_loss': value_loss,
-        'v_gz max': v1_gz.max(),
-        'v_gz min': v1_gz.min(),
-        'v_zz': v_zz.mean(),
-        'v_gz': v1_gz.mean(),
-        'abs adv mean': jnp.abs(advantage).mean(),
-        'adv mean': advantage.mean(),
-        'adv max': advantage.max(),
-        'adv min': advantage.min(),
-        'accept prob': (advantage >= 0).mean(),
-        'reward mean': batch['rewards'].mean(),
-        'mask mean': batch['masks'].mean(),
-        'q_gz max': q1_gz.max(),
-        'value_loss1': masked_mean((q1_gz-v1_gz)**2, batch['masks']), # Loss on s \neq s_+
-        'value_loss2': masked_mean((q1_gz-v1_gz)**2, 1.0 - batch['masks']), # Loss on s = s_+
-    }
-
 class ICVF_EQX_Agent(eqx.Module):
     value_learner: TrainTargetStateEQX
     config: dict
  
 @eqx.filter_vmap(in_axes=dict(ensemble=eqx.if_array(0), s=None, g=None, z=None), out_axes=0)
-def eval_ensemble(ensemble, s, g, z, mode):
-    return eqx.filter_vmap(ensemble)(s, g, z, mode)
+def eval_ensemble_icvf(ensemble, s, g, z):
+    return eqx.filter_vmap(ensemble.classic_icvf)(s, g, z)
+
+@eqx.filter_vmap(in_axes=dict(ensemble=eqx.if_array(0), s=None, z=None), out_axes=0)
+def eval_ensemble_gotil(ensemble, s,z):
+    return eqx.filter_vmap(ensemble.gotil)(s, z)
 
 @eqx.filter_jit
 def update(agent, batch, intents=None):

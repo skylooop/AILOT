@@ -151,24 +151,26 @@ class MultilinearVF_EQX(eqx.Module):
         self.matrix_a = eqxnn.Linear(in_features=hidden_dims[-1], out_features=hidden_dims[-1], key=matrix_a_key)
         self.matrix_b = eqxnn.Linear(in_features=hidden_dims[-1], out_features=hidden_dims[-1], key=matrix_b_key)
         
-    def __call__(self, observations, outcomes, intents, mode):
-        if mode is None:
-            phi = self.phi_net(observations)
-            psi = self.psi_net(outcomes)
-            z = intents
-            Tz = self.T_net(z)
-            
-            phi_z = self.matrix_a(Tz * phi)
-            psi_z = self.matrix_b(Tz * psi)
-            v = (phi_z * psi_z).sum(axis=-1)
-        else:
-            phi = jax.lax.stop_gradient(self.phi_net(observations))
-            Tz = jax.lax.stop_gradient(self.T_net(intents))
-            phi_z = self.matrix_a(Tz * phi)
-            psi = self.gotil_psi(phi_z)
-            v = (phi_z).sum(axis=-1)
+    def classic_icvf(self, observations, outcomes, intents):
+        phi = self.phi_net(observations)
+        psi = self.psi_net(outcomes)
+        #z =self.psi_net(intents)
+        z = intents
+        Tz = self.T_net(z)
+        
+        phi_z = self.matrix_a(Tz * phi)
+        psi_z = self.matrix_b(Tz * psi)
+        v = (phi_z * psi_z).sum(axis=-1)
         return v
-
+    
+    def gotil(self, observations, intents):
+        phi = jax.lax.stop_gradient(self.phi_net(observations))
+        Tz = jax.lax.stop_gradient(self.T_net(intents))
+        phi_z = self.matrix_a(Tz * phi)
+        psi = self.gotil_psi(phi_z)
+        v = (phi_z).sum(axis=-1)
+        return v
+    
 def get_rep(
         encoder: nn.Module, targets: jnp.ndarray, bases: jnp.ndarray = None,
 ):

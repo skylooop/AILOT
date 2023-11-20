@@ -8,9 +8,9 @@ defaults:
   - logger: wandb
 
 seed: 42
-num_video_episodes: 2
+num_video_episodes: 1
 log_interval: 1_000
-eval_interval: 1_000
+eval_interval: 10_000
 eval_episodes: 2
 save_interval: 300_000
 batch_size: 1024

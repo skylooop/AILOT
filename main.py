@@ -27,7 +27,7 @@ from jaxrl_m.wandb import setup_wandb
 import d4rl
 from src.agents import hiql, icvf, gotil
 from src.agents.gotil import evaluate_with_trajectories_gotil
-from src.agents.icvf import update, eval_ensemble
+from src.agents.icvf import update, eval_ensemble_gotil, eval_ensemble_icvf
 from src.gc_dataset import GCSDataset
 from src.utils import record_video
 from src import d4rl_utils, d4rl_ant, ant_diagnostics, viz_utils
@@ -51,7 +51,7 @@ def get_v(agent, goal, observations):
 @eqx.filter_jit
 def get_debug_statistics_icvf(agent, batch, intents=None):
     def get_info(s, g, z):
-        return eval_ensemble(agent.value_learner.model, s, g, z, None)
+        return eval_ensemble_icvf(agent.value_learner.model, s, g, z)
     
     s = batch['observations']
     g = batch['icvf_goals']
@@ -99,7 +99,7 @@ def get_debug_statistics_icvf(agent, batch, intents=None):
 @eqx.filter_jit
 def get_traj_v(agent, trajectory, seed):
     def get_v(s, g):
-        v1, v2 = eval_ensemble(agent.agent_icvf.value_learner.model, s[None], g[None], g[None], "gotil")
+        v1, v2 = eval_ensemble_gotil(agent.agent_icvf.value_learner.model, s[None], g[None])
         return (v1 + v2) / 2
     observations = trajectory['observations']
     intents = eqx.filter_vmap(agent.actor_intents_learner.model)(observations).sample(seed=seed)
@@ -135,8 +135,9 @@ def main(config: DictConfig):
     
     print("Loading Agent dummy dataset")
     agent_dataset = get_dataset(config.algo.path_to_agent_data)
-    mixed_ds = combine_ds(expert_dataset, agent_dataset)
-    mixed_ds = d4rl_utils.get_dataset(env, dataset=mixed_ds, mixed_ds=True, normalize_states=False, normalize_rewards=False)
+    mixed_ds = d4rl_utils.get_dataset(env, mixed_ds=False)
+    #mixed_ds = combine_ds(expert_dataset, agent_dataset)
+    #mixed_ds = d4rl_utils.get_dataset(env, dataset=mixed_ds, mixed_ds=True, normalize_states=False, normalize_rewards=False)
     agent_gc_dataset = GCSDataset(mixed_ds, **dict(config.GoalDS), discount=config.Env.discount)
         
     expert_icvf = icvf.create_eqx_learner(config.seed,
@@ -191,12 +192,12 @@ def main(config: DictConfig):
             returns, renders = evaluate_with_trajectories_gotil(env=env, actor=agent, 
                                                         num_episodes=config.eval_episodes, num_video_episodes=config.num_video_episodes, base_observation=base_observation,
                                                         seed=rng)
-            video = record_video('Video', i, renders=renders)
+            if config.num_video_episodes > 0:
+                    video = record_video('Video', i, renders=renders)
+                    train_metrics['video'] = video
             os.environ['CUDA_VISIBLE_DEVICES']="0,1,2,3,4"
             
             wandb.log({'Eval Returns': returns}, step=i)
-            train_metrics['video'] = video
-        
             wandb.log(train_metrics, step=i)
         
         
