@@ -11,8 +11,9 @@ wandb
 *.png
 *.TXT
 *.eqx
-outputs/
 
+outputs/
+outputs
 # Distribution / packaging
 .Python
 build/

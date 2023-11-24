@@ -25,9 +25,9 @@ from tqdm.auto import tqdm
 from jaxrl_m.wandb import setup_wandb
 
 import d4rl
-from src.agents import hiql, icvf, gotil
+from src.agents import icvf, gotil
 from src.agents.gotil import evaluate_with_trajectories_gotil
-from src.agents.icvf import update, eval_ensemble_gotil, eval_ensemble_icvf
+from src.agents.icvf import update, eval_ensemble_gotil, eval_ensemble_icvf, eval_ensemble_icvf_viz
 from src.gc_dataset import GCSDataset
 from src.utils import record_video
 from src import d4rl_utils, d4rl_ant, ant_diagnostics, viz_utils
@@ -39,34 +39,29 @@ from jaxrl_m.evaluation import supply_rng, evaluate_with_trajectories
 from utils.ds_builder import setup_expert_dataset
 from utils.rich_utils import print_config_tree
 
-@jax.jit
-def get_gcvalue(agent, s, g):
-    v1, v2 = agent.network(s, g, method='value')
+@eqx.filter_jit
+def get_gcvalue(agent, s, z):
+    v1, v2 = eval_ensemble_gotil(agent.agent_icvf.value_learner.model, s, z)
     return (v1 + v2) / 2
 
-def get_v(agent, goal, observations):
-    goal = jnp.tile(goal, (observations.shape[0], 1))
-    return get_gcvalue(agent, observations, goal)
+def get_v(agent, observations):
+    intents = eqx.filter_vmap(agent.sample_intentions, in_axes=(0, None))(observations, jax.random.PRNGKey(42))
+    return get_gcvalue(agent, observations, intents)
+
+@eqx.filter_vmap(in_axes=dict(ensemble=eqx.if_array(0), s=None), out_axes=0)
+def eval_ensemble(ensemble, s):
+    return eqx.filter_vmap(ensemble)(s)
 
 @eqx.filter_jit
-def get_debug_statistics_icvf(agent, batch, intents=None):
+def get_debug_statistics_icvf(agent, batch):
     def get_info(s, g, z):
-        return eval_ensemble_icvf(agent.value_learner.model, s, g, z)
+        return eval_ensemble_icvf_viz(agent.value_learner.model, s, g, z)
     
     s = batch['observations']
     g = batch['icvf_goals']
-    if intents is not None:
-        z = intents
-        info_szz = None
-        info_szg = None
-        info_sgg = None
-    else:
-        z = batch['icvf_desired_goals']
-        info_szz = get_info(s, z, z)
-        info_szg = get_info(s, z, g)
-        info_sgg = get_info(s, g, g)
-        
-    info_ssz = get_info(s, s, z)
+    z = eval_ensemble(agent.value_learner.model.psi_net, batch['icvf_desired_goals'])[0]
+    g = eval_ensemble(agent.value_learner.model.psi_net, batch['icvf_desired_goals'])[0]
+    info_szz = get_info(s, z, z)        
     info_sgz = get_info(s, g, z)
 
     if 'phi' in info_sgz:
@@ -78,22 +73,9 @@ def get_debug_statistics_icvf(agent, batch, intents=None):
         stats = {}
 
     stats.update({
-        'v_ssz': info_ssz.mean(),
-        'v_sgz': info_sgz.mean(),
-        #'diff_szz_szg': (info_szz - info_szg).mean(),
-        #'diff_sgg_sgz': (info_sgg - info_sgz).mean(),
-        # 'v_ssz': info_ssz['v'].mean(),
-        # 'v_szz': info_szz['v'].mean(),
-        # 'v_sgz': info_sgz['v'].mean(),
-        # 'v_sgg': info_sgg['v'].mean(),
-        # 'v_szg': info_szg['v'].mean(),
-        # 'diff_szz_szg': (info_szz['v'] - info_szg['v']).mean(),
-        # 'diff_sgg_sgz': (info_sgg['v'] - info_sgz['v']).mean(),
+        'v_szz': info_szz.mean(),
+        'v_sgz': info_sgz.mean()
     })
-    if intents is None:
-        stats.update({'v_szz': info_szz.mean(),
-                      'v_szg': info_szg.mean(),
-                      'v_sgg': info_sgg.mean()})
     return stats
 
 @eqx.filter_jit
@@ -104,6 +86,20 @@ def get_traj_v(agent, trajectory, seed):
     observations = trajectory['observations']
     intents = eqx.filter_vmap(agent.actor_intents_learner.model)(observations).sample(seed=seed)
     all_values = jax.vmap(jax.vmap(get_v, in_axes=(None, 0)), in_axes=(0, None))(observations, intents)
+    return {
+        'dist_to_beginning': all_values[:, 0],
+        'dist_to_end': all_values[:, -1],
+        'dist_to_middle': all_values[:, all_values.shape[1] // 2],
+    }
+    
+@eqx.filter_jit
+def get_traj_v_icvf(agent, trajectory):
+    def get_v(s, g):
+        return eval_ensemble_icvf_viz(agent.expert_icvf.value_learner.model, s[None], g[None], g[None]).mean()
+    
+    observations = trajectory['observations']
+    obs_intents = eval_ensemble(agent.expert_icvf.value_learner.model.psi_net, observations)[0]
+    all_values = jax.vmap(jax.vmap(get_v, in_axes=(None, 0)), in_axes=(0, None))(observations, obs_intents)
     return {
         'dist_to_beginning': all_values[:, 0],
         'dist_to_end': all_values[:, -1],
@@ -143,12 +139,13 @@ def main(config: DictConfig):
     expert_icvf = icvf.create_eqx_learner(config.seed,
                                     observations=example_batch['observations'],
                                     discount=config.Env.discount,
-                                    load_pretrained_phi=True, # load pretrained ICVF
+                                    load_pretrained_icvf=True,
                                     **dict(config.algo))
     
     agent_icvf = icvf.create_eqx_learner(config.seed,
                                     observations=example_batch['observations'],
                                     discount=config.Env.discount,
+                                    load_pretrained_icvf=True,
                                     **dict(config.algo))
     
     agent = gotil.create_eqx_learner(config.seed,
@@ -171,8 +168,8 @@ def main(config: DictConfig):
         pretrain_batch = gc_dataset.sample(config.batch_size) # not needed if expert is pretrained
         
         agent_dataset_batch = agent_gc_dataset.sample(config.batch_size)
-        agent, update_info, intents = agent.pretrain_agent(agent_dataset_batch, rng)
-        debug_statistics = get_debug_statistics_icvf(agent.agent_icvf, pretrain_batch, intents)
+        agent, update_info = agent.pretrain_agent(agent_dataset_batch, rng)
+        debug_statistics = get_debug_statistics_icvf(agent.agent_icvf, pretrain_batch)
         
         if i % config.log_interval == 0:
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
@@ -184,8 +181,17 @@ def main(config: DictConfig):
                 [functools.partial(viz_utils.visualize_metric, metric_name=k) for k in traj_metrics.keys()]
             )
             train_metrics['value_traj_viz'] = wandb.Image(value_viz)
+            
+            traj_metrics = get_traj_v_icvf(agent, example_trajectory)
+            value_viz = viz_utils.make_visual_no_image(
+                traj_metrics,
+                [functools.partial(viz_utils.visualize_metric, metric_name=k) for k in traj_metrics.keys()]
+            )
+            vzz_image = d4rl_ant.value_image(viz_ant, mixed_ds, functools.partial(get_v, agent=agent))
+            train_metrics['value_traj_viz_icvf'] = wandb.Image(value_viz)
+            train_metrics['Vzz Heatmap'] = wandb.Image(vzz_image)
             wandb.log(train_metrics, step=i)
-        
+
         if i % config.eval_interval == 0:
             os.environ['CUDA_VISIBLE_DEVICES']="4"
             base_observation = jax.tree_map(lambda arr: arr[0], gc_dataset.dataset['observations'])

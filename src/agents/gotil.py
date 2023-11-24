@@ -46,18 +46,18 @@ class JointGotilAgent(eqx.Module):
         # Update actor
         updated_actor, actor_high_info = update_actor(self.actor_learner, pretrain_batch, self.agent_icvf, intents)
         # Update ICVF using V(s, z) as advantage
-        updated_agent_icvf, agent_low_info = update(self.agent_icvf, pretrain_batch, intents)
+        # updated_agent_icvf, agent_low_info = update(self.agent_icvf, pretrain_batch, intents)
         # Update intents of actor using OT
         expert_intents1, expert_intents2 = eqx.filter_jit(get_expert_intents)(self.expert_icvf.value_learner.model.psi_net, pretrain_batch['icvf_desired_goals'])
-        expert_marginals1, expert_marginals2 = eqx.filter_jit(eval_ensemble_icvf)(self.expert_icvf.value_learner.model, pretrain_batch['next_observations'], pretrain_batch['icvf_desired_goals'], intents)
-        agent_icvf, updated_intent_actor, ot_info = ot_update(self.actor_intents_learner, updated_agent_icvf, pretrain_batch, expert_marginals1, expert_intents1, key=seed)
-        
+        expert_marginals1, expert_marginals2 = eqx.filter_jit(eval_ensemble_icvf)(self.expert_icvf.value_learner.model, pretrain_batch['observations'], pretrain_batch['icvf_desired_goals'], intents)
+        #agent_icvf, updated_intent_actor, ot_info = ot_update(self.actor_intents_learner, updated_agent_icvf, pretrain_batch, expert_marginals1, expert_intents1, key=seed)
+        agent_icvf, updated_intent_actor, ot_info = ot_update(self.actor_intents_learner, self.agent_icvf, pretrain_batch, expert_marginals1, expert_intents1, key=seed)
         info = {}
         info.update({"Low actor info": actor_high_info,
-                     "High actor info": agent_low_info,
+                     #"High actor info": agent_low_info,
                      "OT info": ot_info})
         
-        return dataclasses.replace(self, agent_icvf=agent_icvf, actor_intents_learner=updated_intent_actor, actor_learner=updated_actor), info, intents
+        return dataclasses.replace(self, agent_icvf=agent_icvf, actor_intents_learner=updated_intent_actor, actor_learner=updated_actor), info
 
 @eqx.filter_jit
 def update_actor(actor_learner, batch, agent_icvf, intents):
@@ -68,7 +68,7 @@ def update_actor(actor_learner, batch, agent_icvf, intents):
         nv = (nv1 + nv2) / 2
 
         adv = nv - v
-        exp_a = jnp.exp(adv * 10.0)
+        exp_a = jnp.exp(adv * 5.0)
         exp_a = jnp.minimum(exp_a, 100.0).squeeze()
         # Take s, z as input -> action
         dist = eqx.filter_vmap(actor)(batch['observations'], intents)

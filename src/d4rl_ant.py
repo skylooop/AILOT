@@ -142,7 +142,7 @@ def get_env_and_dataset(env_name):
 
 def plot_value(env, dataset, value_fn, fig, ax, N=20, random=False, title=None):
     observations = env.XY(n=N)
-
+    
     if random:
         base_observations = np.copy(dataset['observations'])[np.random.choice(dataset.size, len(observations))]
     else:
@@ -150,8 +150,7 @@ def plot_value(env, dataset, value_fn, fig, ax, N=20, random=False, title=None):
         base_observations = np.tile(base_observation, (observations.shape[0], 1))
 
     base_observations[:, :2] = observations
-
-    values = value_fn(base_observations)
+    values = value_fn(observations=base_observations)
 
     x, y = observations[:, 0], observations[:, 1]
     x = x.reshape(N, N)
@@ -163,7 +162,7 @@ def plot_value(env, dataset, value_fn, fig, ax, N=20, random=False, title=None):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='5%', pad=0.05)
     fig.colorbar(mesh, cax=cax, orientation='vertical')
-
+    ax.scatter(*env.target_goal, marker="x", cmap='red')
     if title:
         ax.set_title(title)
 
