@@ -27,10 +27,6 @@ def setup_expert_dataset(config):
             env.viewer.cam.lookat[1] = 12
             env.viewer.cam.distance = 50
             env.viewer.cam.elevation = -90
-            
-            # viz_env, viz_dataset = d4rl_ant.get_env_and_dataset(env_name)
-            # init_state = np.copy(viz_dataset['observations'][0])
-            # init_state[:2] = (12.5, 8)
 
         elif 'ultra' in env_name:
             env.viewer.cam.lookat[0] = 26

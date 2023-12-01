@@ -113,20 +113,17 @@ def main(config: DictConfig):
                 project=config.logger.project,
                 group=config.logger.group,
                 name=None)
-    print("Loading Expert data")
+    
     env, expert_dataset = setup_expert_dataset(config)
     env.reset()
     
     rng = jax.random.PRNGKey(config.seed)
-    # ICVF is learned on GCRL dataaset
-    if config.GoalDS:
-        gc_dataset = GCSDataset(expert_dataset, **dict(config.GoalDS),
-                                discount=config.Env.discount)
-        if 'antmaze' in env.spec.id.lower():
-            # take one expert trajectory (where goal is reached)
-            example_trajectory = gc_dataset.sample(100, indx=np.arange(700, 800))
+    gc_dataset = GCSDataset(expert_dataset, **dict(config.GoalDS),
+                            discount=config.Env.discount)
+    
+    if 'antmaze' in env.spec.id.lower():
+        example_trajectory = gc_dataset.sample(190, indx=np.arange(10000, 10190))
             
-    total_steps = config.pretrain_steps 
     example_batch = expert_dataset.sample(1)
     
     print("Loading Agent dummy dataset")
@@ -163,7 +160,7 @@ def main(config: DictConfig):
     train_metrics['sample_traj'] = wandb.Image(sample_traj_img)
     wandb.log(train_metrics)
     
-    for i in tqdm(range(1, total_steps + 1), smoothing=0.1, dynamic_ncols=True, desc="Training"):
+    for i in tqdm(range(1, config.pretrain_steps + 1), smoothing=0.1, dynamic_ncols=True):
         rng, rng1 = jax.random.split(rng, 2)
         pretrain_batch = gc_dataset.sample(config.batch_size) # not needed if expert is pretrained
         

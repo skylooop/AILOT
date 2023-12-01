@@ -1,4 +1,3 @@
-from jaxrl_m.dataset import Dataset
 from jaxrl_m.typing import *
 from jaxrl_m.networks import *
 import jax
@@ -73,6 +72,17 @@ class MultilinearVF_EQX(eqx.Module):
         v = (phi_z * psi_z).sum(axis=-1)
         return v
     
+    def icvf_zz(self, observations, outcomes, intents):
+        phi = self.phi_net(observations)
+        psi = outcomes
+        z = intents
+        Tz = self.T_net(z)
+        
+        phi_z = self.matrix_a(Tz * phi)
+        psi_z = self.matrix_b(Tz * psi)
+        v = (phi_z * psi_z).sum(axis=-1)
+        return v
+    
     def classic_icvf_initial(self, observations, outcomes, intents):
         phi = self.phi_net(observations)
         psi = self.psi_net(outcomes)
@@ -95,10 +105,11 @@ class MultilinearVF_EQX(eqx.Module):
         v = (phi_z * psi_z).sum(axis=-1)
         return v
     
+    # NOT WORKING
     def gotil(self, observations, intents):
-        phi = jax.lax.stop_gradient(self.phi_net(observations))
-        Tz = jax.lax.stop_gradient(self.T_net(intents))
+        phi = self.phi_net(observations)
+        Tz = self.T_net(intents)
         phi_z = self.matrix_a(Tz * phi)
-        psi = self.gotil_psi(phi_z)
-        v = (psi).sum(axis=-1)
+        #psi = self.gotil_psi(phi_z)
+        v = (phi_z).sum(axis=-1)
         return v

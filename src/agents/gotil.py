@@ -11,8 +11,6 @@ import optax
 # Optimal Transport Imports
 from collections import defaultdict
 from ott.geometry import pointcloud
-from ott.problems.linear import linear_problem
-from ott.solvers.linear import sinkhorn
 from ott.tools import plot, sinkhorn_divergence
 from ott.solvers.linear import implicit_differentiation as imp_diff
 
@@ -166,7 +164,7 @@ def create_eqx_learner(seed: int,
                        **kwargs):
     
     rng = jax.random.PRNGKey(seed)
-    rng, value_model, actor_learner_key = jax.random.split(rng, 3)
+    rng, actor_learner_key = jax.random.split(rng, 2)
     
     actor_intents_learner = TrainStateEQX.create(
         model=GaussianIntentPolicy(key=actor_learner_key,
