@@ -1,6 +1,7 @@
 from jaxrl_m.dataset import Dataset
 import ml_collections
 
+from jaxtyping import *
 import dataclasses
 import numpy as np
 import jax
@@ -21,6 +22,9 @@ class GCDataset:
     terminal: bool = True
     curr_goal_shift: int = 0
     
+    expert_trajectory: ArrayLike = None
+    expert_subgoals: ArrayLike = None
+        
     def __post_init__(self):
         self.terminal_locs, = np.nonzero(self.dataset[self.terminal_key] > 0)
         assert np.isclose(self.p_randomgoal + self.p_trajgoal + self.p_currgoal, 1.0)
@@ -88,29 +92,8 @@ class GCSDataset(GCDataset):
 
         batch = self.dataset.sample(batch_size, indx)
         
-        # HER relabelling
-        if self.intent_sametraj:
-            icvf_desired_goal_indx = self.sample_goals(indx, p_randomgoal=0.0, p_trajgoal=1.0 - self.p_currgoal, p_currgoal=self.p_currgoal)
-        else:
-            icvf_desired_goal_indx = self.sample_goals(indx)
-            
-        icvf_goal_indx = self.sample_goals(indx)
-        icvf_goal_indx = np.where(np.random.rand(batch_size) < self.p_samegoal, icvf_desired_goal_indx, icvf_goal_indx)
-        
-        
-        icvf_success = (indx == icvf_goal_indx)
-        icvf_desired_success = (indx == icvf_desired_goal_indx)
-        
-        batch['icvf_rewards'] = icvf_success.astype(float) * self.reward_scale + self.reward_shift
-        batch['icvf_desired_rewards'] = icvf_desired_success.astype(float) * self.reward_scale + self.reward_shift
-        
-        batch['icvf_masks'] = (1.0 - icvf_success.astype(float))
-        batch['icvf_desired_masks'] = (1.0 - icvf_desired_success.astype(float))
-        
-        icvf_goal_indx = np.clip(icvf_goal_indx + self.curr_goal_shift, 0, self.dataset.size-1)
-        icvf_desired_goal_indx = np.clip(icvf_desired_goal_indx + self.curr_goal_shift, 0, self.dataset.size-1)
-        batch['icvf_goals'] = jax.tree_map(lambda arr: arr[icvf_goal_indx], self.dataset['observations'])
-        batch['icvf_desired_goals'] = jax.tree_map(lambda arr: arr[icvf_desired_goal_indx], self.dataset['observations'])
-        
+        ailot_subgoals = self.expert_subgoals[np.random.randint(low=0, high=self.expert_subgoals.shape[0], size=batch_size)]
+        batch['ailot_subgoals'] = ailot_subgoals # subgoals from trajectory
+        batch['ailot_goal'] = self.expert_subgoals[-1][None] # final goal
         
         return batch

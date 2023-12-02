@@ -4,5 +4,4 @@ p_currgoal: 0.2
 geom_sample: 1
 reward_scale: 1.0
 reward_shift: -1 # -1 for icvf, 0 for hiql
-high_p_randomgoal: 0.3
 terminal: True

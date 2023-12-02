@@ -3,7 +3,7 @@
 defaults:
   - _self_
   - GoalDS: gcds
-  - Env: antmaze-umaze
+  - Env: antmaze-large-diverse
   - algo: gotil
   - logger: wandb
 

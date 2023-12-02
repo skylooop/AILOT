@@ -23,6 +23,8 @@ import numpy as np
 import equinox as eqx
 from tqdm.auto import tqdm
 from jaxrl_m.wandb import setup_wandb
+import matplotlib.pyplot as plt
+
 
 import d4rl
 from src.agents import icvf, gotil
@@ -123,16 +125,17 @@ def main(config: DictConfig):
     
     if 'antmaze' in env.spec.id.lower():
         example_trajectory = gc_dataset.sample(190, indx=np.arange(10000, 10190))
-            
-    example_batch = expert_dataset.sample(1)
-    
-    print("Loading Agent dummy dataset")
+
     agent_dataset = get_dataset(config.algo.path_to_agent_data)
     mixed_ds = d4rl_utils.get_dataset(env, mixed_ds=False)
+    expert_trajectory = mixed_ds['observations'][np.arange(start=10000, stop=10190)]
+    subgoals = expert_trajectory[[40, 85, 150, 189]]
     #mixed_ds = combine_ds(expert_dataset, agent_dataset)
     #mixed_ds = d4rl_utils.get_dataset(env, dataset=mixed_ds, mixed_ds=True, normalize_states=False, normalize_rewards=False)
-    agent_gc_dataset = GCSDataset(mixed_ds, **dict(config.GoalDS), discount=config.Env.discount)
-        
+    agent_gc_dataset = GCSDataset(mixed_ds, **dict(config.GoalDS), discount=config.Env.discount,
+                                  expert_trajectory=expert_trajectory, expert_subgoals=expert_trajectory)
+    
+    example_batch = expert_dataset.sample(1)
     expert_icvf = icvf.create_eqx_learner(config.seed,
                                     observations=example_batch['observations'],
                                     discount=config.Env.discount,
@@ -154,10 +157,12 @@ def main(config: DictConfig):
                                     **dict(config.algo))
     
     train_metrics = {}
+    
+    # Plot pretrained ICVF values
+    fig_icvf, ax_icvf = plt.subplots(figsize=(7, 5))
     viz_ant = d4rl_ant.GoalReachingAnt(config.Env.dataset_id.lower())
-    sample_traj_img = d4rl_ant.trajectory_image(viz_ant, [example_trajectory])
-
-    train_metrics['sample_traj'] = wandb.Image(sample_traj_img)
+    sample_icvf_heatmap = viz_ant.plot_icvf_maze(ax=ax_icvf, fig=fig_icvf, icvf_model=expert_icvf, state_list=expert_trajectory, subgoals=subgoals)
+    train_metrics['ICVF Heatmap'] = wandb.Image(sample_icvf_heatmap)
     wandb.log(train_metrics)
     
     for i in tqdm(range(1, config.pretrain_steps + 1), smoothing=0.1, dynamic_ncols=True):
@@ -184,9 +189,7 @@ def main(config: DictConfig):
                 traj_metrics,
                 [functools.partial(viz_utils.visualize_metric, metric_name=k) for k in traj_metrics.keys()]
             )
-            vzz_image = d4rl_ant.value_image(viz_ant, mixed_ds, functools.partial(get_v, agent=agent))
             train_metrics['value_traj_viz_icvf'] = wandb.Image(value_viz)
-            train_metrics['Vzz Heatmap'] = wandb.Image(vzz_image)
             wandb.log(train_metrics, step=i)
 
         if i % config.eval_interval == 0:

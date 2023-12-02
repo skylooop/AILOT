@@ -1,11 +1,8 @@
-import matplotlib
-matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+plt.style.use('fivethirtyeight')
 from matplotlib import patches
-
-import matplotlib.pyplot as plt
-import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+
 from functools import partial
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -14,6 +11,10 @@ import d4rl
 import numpy as np
 import functools as ft
 import math
+
+import jax.numpy as jnp
+import equinox as eqx
+
 from jaxrl_m.dataset import Dataset
 import matplotlib.gridspec as gridspec
 
@@ -131,6 +132,59 @@ class GoalReachingAnt(gym.Wrapper):
         ax.set_xlim(0 - S /2 + 0.6 * S - torso_x, len(self._maze_map[0]) * S - torso_x - S/2 - S * 0.6)
         ax.set_ylim(0 - S/2 + 0.6 * S - torso_y, len(self._maze_map) * S - torso_y - S/2 - S * 0.6)
         ax.axis('off')
+        
+    def plot_icvf_maze(self, fig, icvf_model, subgoals, n=50, state_list=None, ax=None):
+        if ax is None:
+            ax = plt.gca()
+        torso_x, torso_y = self.env.env.env._wrapped_env._init_torso_x, self.env.env.env._wrapped_env._init_torso_y
+        S = self.env.env.env._wrapped_env._maze_size_scaling
+        points = self.XY(n=n)
+        whole_grid = state_list[-5]
+        whole_grid = np.tile(whole_grid, (points.shape[0], 1))
+        whole_grid[:, :2] = points
+        
+        Z = get_v_zz_heatmap(icvf_model, whole_grid, state_list).mean(0)
+        im = ax.pcolormesh(points[:,0].reshape(n, n), points[:, 1].reshape(n, n), Z.reshape(n, n), edgecolor='black', shading='nearest')
+        
+        for i in range(len(self.env.env.env._wrapped_env._maze_map)):
+            for j in range(len(self.env.env.env._wrapped_env._maze_map[0])):
+                struct = self.env.env.env._wrapped_env._maze_map[i][j]
+                if struct == 1:
+                    rect = patches.Rectangle((j *S - torso_x - S/ 2,
+                                            i * S- torso_y - S/ 2),
+                                            S,
+                                            S, linewidth=1, facecolor='RosyBrown', alpha=1.0)
+                    ax.add_patch(rect)
+        ax.set_xlim(0 - S /2 + 0.6 * S - torso_x, len(self.env.env.env._wrapped_env._maze_map[0]) * S - torso_x - S/2 - S * 0.6)
+        ax.set_ylim(0 - S/2 + 0.6 * S - torso_y, len(self.env.env.env._wrapped_env._maze_map) * S - torso_y - S/2 - S * 0.6)
+        
+        plt.scatter(state_list[:, 0], state_list[:, 1], alpha=1, label='trajectory', color='orange')
+        for i in range(subgoals.shape[0]):
+            plt.scatter(*subgoals[i, :2], label="subgoal", edgecolors='black', alpha=1)
+        
+        plt.legend(loc='upper left', fontsize=10)
+        plt.title("ICVF Heatmap")
+        fig.colorbar(im)
+        return ax
+
+@eqx.filter_vmap(in_axes=dict(ensemble=eqx.if_array(0), s=None, g=None, z=None))
+def eval_ensemble_icvf_viz(ensemble, s, g, z):
+    return eqx.filter_vmap(ensemble.classic_icvf_initial)(s, g, z)
+
+@eqx.filter_jit
+def get_gcvalue(agent, s, g, z):
+    v_sgz_1, v_sgz_2 = eval_ensemble_icvf_viz(agent.value_learner.model, s, g, z)
+    return (v_sgz_1 + v_sgz_2) / 2
+
+def get_v_zz(agent, goal, observations):
+    goal = jnp.tile(goal, (observations.shape[0], 1))
+    return get_gcvalue(agent, observations, goal, goal)
+
+@eqx.filter_vmap(in_axes=dict(agent=None, obs=None, goal=0))
+def get_v_zz_heatmap(agent, obs, goal):
+    goal = jnp.tile(goal, (obs.shape[0], 1))
+    return get_gcvalue(agent, obs, goal, goal)
+
 
 def get_env_and_dataset(env_name):
     env = GoalReachingAnt(env_name)
