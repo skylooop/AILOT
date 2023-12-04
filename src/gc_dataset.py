@@ -72,28 +72,32 @@ class GCDataset:
 
 @dataclasses.dataclass
 class GCSDataset(GCDataset):
-    intent_sametraj: bool = False
+    way_steps: int = 25
+    high_p_randomgoal: float = 0.3
     
-    @staticmethod
-    def get_default_config():
-        return ml_collections.ConfigDict({
-            'p_randomgoal': 0.3,
-            'p_trajgoal': 0.5,
-            'p_currgoal': 0.2,
-            'geom_sample': 0,
-            'reward_scale': 1.0,
-            'reward_shift': -1.0,
-            'terminal': True,
-        })
-        
     def sample(self, batch_size: int, indx=None):
         if indx is None:
             indx = np.random.randint(self.dataset.size-1, size=batch_size)
 
         batch = self.dataset.sample(batch_size, indx)
         
-        ailot_subgoals = self.expert_subgoals[np.random.randint(low=0, high=self.expert_subgoals.shape[0], size=batch_size)]
-        batch['ailot_subgoals'] = ailot_subgoals # subgoals from trajectory
-        batch['ailot_goal'] = self.expert_subgoals[-1][None] # final goal
+        final_state_indx = self.terminal_locs[np.searchsorted(self.terminal_locs, indx)] # find boudaries of traj for curr state
+        way_indx = np.minimum(indx + self.way_steps, final_state_indx)
+        batch['ailot_low_goals'] = jax.tree_map(lambda arr: arr[way_indx], self.dataset['observations']) # s_{t+k}
         
+        distance = np.random.rand(batch_size)
+        expert_traj_indx = np.random.randint(low=0, high=self.expert_trajectory.shape[0] - 1, size=batch_size)
+        
+        high_traj_goal_indx = np.round(np.minimum(expert_traj_indx+1, self.expert_trajectory.shape[0]-1) * distance + (self.expert_trajectory.shape[0] - 1) * (1 - distance)).astype(int)
+        high_traj_target_indx = np.minimum(expert_traj_indx + self.way_steps, high_traj_goal_indx)
+        
+        high_random_goal_indx = np.random.randint(self.expert_trajectory.shape[0] - 1, size=batch_size)
+        high_random_target_indx = np.minimum(expert_traj_indx + self.way_steps, self.expert_trajectory.shape[0]-1)
+
+        pick_random = (np.random.rand(batch_size) < self.high_p_randomgoal)
+        high_goal_idx = np.where(pick_random, high_random_goal_indx, high_traj_goal_indx)
+        high_target_idx = np.where(pick_random, high_random_target_indx, high_traj_target_indx)
+
+        batch['ailot_high_goals'] = jax.tree_map(lambda arr: arr[high_goal_idx], self.expert_trajectory) # goals
+        batch['ailot_high_targets'] = jax.tree_map(lambda arr: arr[high_target_idx], self.expert_trajectory)
         return batch

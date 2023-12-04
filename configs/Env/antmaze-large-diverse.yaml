@@ -1,6 +1,5 @@
 dataset_id: antmaze-large-diverse-v2
 
-gcrl: False
 discount: 0.99
 normalize_states: False
 normalize_rewards: True
