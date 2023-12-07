@@ -35,7 +35,7 @@ class MultilinearVF_EQX(eqx.Module):
                                         width_size=hidden_dims[0], depth=len(hidden_dims),
                                         final_activation=jax.nn.gelu)
         self.gotil_psi = eqxnn.MLP(
-            in_size=hidden_dims[-1], out_size=hidden_dims[-1], width_size=hidden_dims[-1], depth=len(hidden_dims), key=gotil_mlp_key)
+            in_size=hidden_dims[-1], out_size=1, width_size=hidden_dims[-1], depth=1, key=gotil_mlp_key)
             
         if pretrained_phi is None:
             self.phi_net = network_cls(key=phi_key)
@@ -109,7 +109,9 @@ class MultilinearVF_EQX(eqx.Module):
     def gotil(self, observations, intents):
         phi = self.phi_net(observations)
         Tz = self.T_net(intents)
-        phi_z = self.matrix_a(Tz * phi)
-        #psi = self.gotil_psi(phi_z)
-        v = (phi_z).sum(axis=-1)
+        phi_z = jax.lax.stop_gradient(self.matrix_a(Tz * phi))
+        psi_z = jax.lax.stop_gradient(self.matrix_b(Tz))
+        v = self.gotil_psi(phi_z * psi_z).squeeze(axis=-1)
+        v = jax.nn.softplus(v)
+        # v = (phi_z).sum(axis=-1)
         return v

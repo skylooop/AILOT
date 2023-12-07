@@ -1,3 +1,4 @@
+from sklearn import base
 from jaxrl_m.typing import *
 
 import jax
@@ -102,12 +103,14 @@ def create_eqx_learner(seed: int,
             T_net = network_cls_T(key=rng)
             matrix_a = loaded_matrix_a(key=rng)
             matrix_b = loaded_matrix_b(key=rng)
+
+            base_path = "/home/m_bobrin/AILOT"
             
-            loaded_phi_net = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_phi.eqx", phi_net)
-            loaded_psi_net = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_psi.eqx", psi_net)
-            loaded_T_net = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_T.eqx", T_net)
-            loaded_matrix_a = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_a.eqx", matrix_a)
-            loaded_matrix_b = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_b.eqx", matrix_b)
+            loaded_phi_net = eqx.tree_deserialise_leaves(base_path + "/pretrained_icvf/antmaze-large-diverse/icvf_model_phi.eqx", phi_net)
+            loaded_psi_net = eqx.tree_deserialise_leaves(base_path + "/pretrained_icvf/antmaze-large-diverse/icvf_model_psi.eqx", psi_net)
+            loaded_T_net = eqx.tree_deserialise_leaves(base_path + "/pretrained_icvf/antmaze-large-diverse/icvf_model_T.eqx", T_net)
+            loaded_matrix_a = eqx.tree_deserialise_leaves(base_path + "/pretrained_icvf/antmaze-large-diverse/icvf_model_a.eqx", matrix_a)
+            loaded_matrix_b = eqx.tree_deserialise_leaves(base_path + "/pretrained_icvf/antmaze-large-diverse/icvf_model_b.eqx", matrix_b)
         else:
             loaded_phi_net = None
             loaded_psi_net = None
