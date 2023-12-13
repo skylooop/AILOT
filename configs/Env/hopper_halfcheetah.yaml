@@ -1,0 +1,3 @@
+cross_domain: True
+expert_env: halfcheetah-expert-v2
+agent_env: hopper-medium-v2

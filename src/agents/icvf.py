@@ -17,7 +17,6 @@ def expectile_loss(adv, diff, expectile=0.8):
     return weight * diff ** 2
 
 def gotil_loss(value_fn, target_value_fn, batch, config, intents):
-    # from icvf
     (next_v1_gz, next_v2_gz) = eval_ensemble_icvf(target_value_fn, batch['next_observations'], batch['icvf_desired_goals'], intents)
     q1_gz = batch['icvf_rewards'] + config['discount'] * batch['icvf_masks'] * next_v1_gz
     q2_gz = batch['icvf_rewards'] + config['discount'] * batch['icvf_masks'] * next_v2_gz
@@ -74,7 +73,8 @@ def create_eqx_learner(seed: int,
                             'learning_rate': 0.00005,
                             'eps': 0.0003125
                         },
-                        load_pretrained_icvf: bool=False,
+                        load_pretrained_icvf: bool = False,
+                        pretrained_folder: str = "antmaze-large-diverse",
                         discount: float = 0.99,
                         target_update_rate: float = 0.005,
                         expectile: float = 0.9,
@@ -86,14 +86,12 @@ def create_eqx_learner(seed: int,
         rng = jax.random.PRNGKey(seed)
         
         if load_pretrained_icvf:
-            network_cls_phi = functools.partial(nn.MLP, in_size=observations.shape[-1], out_size=hidden_dims[-1],
-                                        width_size=hidden_dims[0], depth=len(hidden_dims),
-                                        final_activation=jax.nn.gelu)
-            network_cls_psi = functools.partial(nn.MLP, in_size=observations.shape[-1], out_size=hidden_dims[-1],
-                                        width_size=hidden_dims[0], depth=len(hidden_dims),
-                                        final_activation=jax.nn.gelu)
-            network_cls_T = functools.partial(nn.MLP, in_size=hidden_dims[-1], out_size=hidden_dims[-1], width_size=hidden_dims[0], depth=len(hidden_dims),
-                                        final_activation=jax.nn.gelu)
+            network_cls_phi = functools.partial(nn.MLP, in_size=observations.shape[-1], out_size=hidden_dims[-1], final_activation=jax.nn.relu,
+                                        width_size=hidden_dims[0], depth=len(hidden_dims))
+            network_cls_psi = functools.partial(nn.MLP, in_size=observations.shape[-1], out_size=hidden_dims[-1], final_activation=jax.nn.relu,
+                                        width_size=hidden_dims[0], depth=len(hidden_dims))
+            network_cls_T = functools.partial(nn.MLP, in_size=hidden_dims[-1], out_size=hidden_dims[-1], width_size=hidden_dims[0], final_activation=jax.nn.relu,
+                                              depth=len(hidden_dims))
             loaded_matrix_a = functools.partial(nn.Linear, in_features=hidden_dims[-1], out_features=hidden_dims[-1])
             loaded_matrix_b = functools.partial(nn.Linear, in_features=hidden_dims[-1], out_features=hidden_dims[-1])
             
@@ -102,23 +100,24 @@ def create_eqx_learner(seed: int,
             T_net = network_cls_T(key=rng)
             matrix_a = loaded_matrix_a(key=rng)
             matrix_b = loaded_matrix_b(key=rng)
-            
-            loaded_phi_net = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_phi.eqx", phi_net)
-            loaded_psi_net = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_psi.eqx", psi_net)
-            loaded_T_net = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_T.eqx", T_net)
-            loaded_matrix_a = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_a.eqx", matrix_a)
-            loaded_matrix_b = eqx.tree_deserialise_leaves("pretrained_icvf/antmaze-large-diverse/icvf_model_b.eqx", matrix_b)
+            loaded_phi_net = eqx.tree_deserialise_leaves(f"pretrained_icvf/{pretrained_folder}/icvf_model_phi.eqx", phi_net)
+            loaded_psi_net = eqx.tree_deserialise_leaves(f"pretrained_icvf/{pretrained_folder}/icvf_model_psi.eqx", psi_net)
+            loaded_T_net = eqx.tree_deserialise_leaves(f"pretrained_icvf/{pretrained_folder}/icvf_model_T.eqx", T_net)
+            loaded_matrix_a = eqx.tree_deserialise_leaves(f"pretrained_icvf/{pretrained_folder}/icvf_model_a.eqx", matrix_a)
+            loaded_matrix_b = eqx.tree_deserialise_leaves(f"pretrained_icvf/{pretrained_folder}/icvf_model_b.eqx", matrix_b)
         else:
             loaded_phi_net = None
             loaded_psi_net = None
             loaded_T_net = None
+            loaded_matrix_a = None
+            loaded_matrix_b = None
             
         @eqx.filter_vmap
         def ensemblize(keys):
             return MultilinearVF_EQX(key=keys, state_dim=observations.shape[-1], hidden_dims=hidden_dims,
                                      pretrained_phi=loaded_phi_net, pretrained_psi=loaded_psi_net, pretrained_T=loaded_T_net,
                                      pretrained_a=loaded_matrix_a, pretrained_b=loaded_matrix_b)
-        
+            
         value_learner = TrainTargetStateEQX.create(
             model=ensemblize(jax.random.split(rng, 2)),
             target_model=ensemblize(jax.random.split(rng, 2)),

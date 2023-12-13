@@ -38,7 +38,7 @@ from src.generate_antmaze_random import get_dataset, combine_ds
 from jaxrl_m.evaluation import supply_rng, evaluate_with_trajectories
 
 # Utilities from root folder
-from utils.ds_builder import setup_expert_dataset
+from utils.ds_builder import setup_datasets
 from utils.rich_utils import print_config_tree
 
 @eqx.filter_jit
@@ -116,22 +116,22 @@ def main(config: DictConfig):
                 group=config.logger.group,
                 name=None)
     
-    env, expert_dataset = setup_expert_dataset(config)
+    env, expert_dataset, agent_dataset = setup_datasets(config)
     env.reset()
     
     rng = jax.random.PRNGKey(config.seed)
     gc_dataset = GCSDataset(expert_dataset, **dict(config.GoalDS),
-                            discount=config.Env.discount)
+                            discount=config.Env.discount, way_steps=25, high_p_randomgoal=0.1)
     
     if 'antmaze' in env.spec.id.lower():
-        example_trajectory = gc_dataset.sample(190, indx=np.arange(10000, 10190))
-
-    agent_dataset = get_dataset(config.algo.path_to_agent_data)
+        env.env.env._wrapped_env.viewer.cam.lookat[0] = 18
+        env.env.env._wrapped_env.viewer.cam.lookat[1] = 12
+        env.env.env._wrapped_env.viewer.cam.distance = 50
+        env.env.env._wrapped_env.viewer.cam.elevation = -90
+        expert_trajectory = mixed_ds['observations'][np.arange(start=10000, stop=10190)]
+        
     mixed_ds = d4rl_utils.get_dataset(env, mixed_ds=False)
-    expert_trajectory = mixed_ds['observations'][np.arange(start=10000, stop=10190)]
     subgoals = expert_trajectory[[40, 85, 150, 189]]
-    #mixed_ds = combine_ds(expert_dataset, agent_dataset)
-    #mixed_ds = d4rl_utils.get_dataset(env, dataset=mixed_ds, mixed_ds=True, normalize_states=False, normalize_rewards=False)
     agent_gc_dataset = GCSDataset(mixed_ds, **dict(config.GoalDS), discount=config.Env.discount,
                                   expert_trajectory=expert_trajectory, expert_subgoals=expert_trajectory)
     
@@ -177,14 +177,14 @@ def main(config: DictConfig):
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             train_metrics.update({f'pretraining/debug/{k}': v for k, v in debug_statistics.items()})
                     
-            traj_metrics = get_traj_v(agent, example_trajectory, seed=rng)
+            traj_metrics = get_traj_v(agent, expert_trajectory, seed=rng)
             value_viz = viz_utils.make_visual_no_image(
                 traj_metrics,
                 [functools.partial(viz_utils.visualize_metric, metric_name=k) for k in traj_metrics.keys()]
             )
             train_metrics['value_traj_viz'] = wandb.Image(value_viz)
             
-            traj_metrics = get_traj_v_icvf(agent, example_trajectory)
+            traj_metrics = get_traj_v_icvf(agent, expert_trajectory)
             value_viz = viz_utils.make_visual_no_image(
                 traj_metrics,
                 [functools.partial(viz_utils.visualize_metric, metric_name=k) for k in traj_metrics.keys()]

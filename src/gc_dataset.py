@@ -9,8 +9,6 @@ import jax
 @dataclasses.dataclass
 class GCDataset:
     dataset: Dataset
-    
-    p_randomgoal: float
     p_trajgoal: float
     p_currgoal: float
     geom_sample: int
@@ -27,18 +25,15 @@ class GCDataset:
         
     def __post_init__(self):
         self.terminal_locs, = np.nonzero(self.dataset[self.terminal_key] > 0)
-        assert np.isclose(self.p_randomgoal + self.p_trajgoal + self.p_currgoal, 1.0)
 
-    def sample_goals(self, indx, p_randomgoal=None, p_trajgoal=None, p_currgoal=None):
-        if p_randomgoal is None:
-            p_randomgoal = self.p_randomgoal
+    def sample_goals(self, indx, p_trajgoal=None, p_currgoal=None):
         if p_trajgoal is None:
             p_trajgoal = self.p_trajgoal
         if p_currgoal is None:
             p_currgoal = self.p_currgoal
 
         batch_size = len(indx)
-        goal_indx = np.random.randint(self.dataset.size, size=batch_size)
+        goal_indx = np.random.randint(self.dataset.size-1, size=batch_size)
         final_state_indx = self.terminal_locs[np.searchsorted(self.terminal_locs, indx)]
 
         distance = np.random.rand(batch_size)
@@ -73,7 +68,7 @@ class GCDataset:
 @dataclasses.dataclass
 class GCSDataset(GCDataset):
     way_steps: int = 25
-    high_p_randomgoal: float = 0.3
+    high_p_middlegoal: float = 0.3
     
     def sample(self, batch_size: int, indx=None):
         if indx is None:
@@ -83,7 +78,7 @@ class GCSDataset(GCDataset):
         
         final_state_indx = self.terminal_locs[np.searchsorted(self.terminal_locs, indx)] # find boudaries of traj for curr state
         way_indx = np.minimum(indx + self.way_steps, final_state_indx)
-        batch['ailot_low_goals'] = jax.tree_map(lambda arr: arr[way_indx], self.dataset['observations']) # s_{t+k}
+        batch['ailot_low_goals'] = jax.tree_map(lambda arr: arr[way_indx], self.dataset['observations'])
         
         distance = np.random.rand(batch_size)
         expert_traj_indx = np.random.randint(low=0, high=self.expert_trajectory.shape[0] - 1, size=batch_size)
@@ -94,7 +89,7 @@ class GCSDataset(GCDataset):
         high_random_goal_indx = np.random.randint(self.expert_trajectory.shape[0] - 1, size=batch_size)
         high_random_target_indx = np.minimum(expert_traj_indx + self.way_steps, self.expert_trajectory.shape[0]-1)
 
-        pick_random = (np.random.rand(batch_size) < self.high_p_randomgoal)
+        pick_random = (np.random.rand(batch_size) < self.high_p_middlegoal)
         high_goal_idx = np.where(pick_random, high_random_goal_indx, high_traj_goal_indx)
         high_target_idx = np.where(pick_random, high_random_target_indx, high_traj_target_indx)
 

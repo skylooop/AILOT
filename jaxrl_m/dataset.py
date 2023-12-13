@@ -52,7 +52,7 @@ class Dataset(FrozenDict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.size = get_size(self._dict)
-
+        
     def sample(self, batch_size: int, indx=None):
         """
         Sample a batch of data from the dataset. Use `indx` to specify a specific

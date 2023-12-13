@@ -200,6 +200,9 @@ class TrainTargetStateEQX(TrainStateEQX):
         return cls(model=model, optim=optim, optim_state=optim_state, target_model=target_model,
                    **kwargs)
 
+    #def update_gotil(self, grads):
+        #
+    
     def soft_update(self, tau: float = 0.005):
         model_params = eqx.filter(self.model, eqx.is_array)
         target_model_params, target_model_static = eqx.partition(self.target_model, eqx.is_array)

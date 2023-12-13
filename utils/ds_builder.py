@@ -1,12 +1,15 @@
 import os
 from src import d4rl_utils
 from jaxrl_m.evaluation import EpisodeMonitor
+import jax.numpy as jnp
 
-
-def setup_expert_dataset(config):
+def setup_datasets(config):
     
-    if 'antmaze' in config.Env.dataset_id.lower():
-        env_name = config.Env.dataset_id.lower()
+    dataset_expert = d4rl_utils.get_dataset(config.Env.expert_env, expert=True, num_episodes=config.Env.expert_episodes)
+    dataset_agent = d4rl_utils.get_dataset(config.Env.agent_env, expert=False)
+    
+    if 'antmaze' in config.Env.expert_env:
+        env_name = config.Env.expert_env
         if 'ultra' in env_name:
             import d4rl_ext
             import gym
@@ -15,9 +18,8 @@ def setup_expert_dataset(config):
             import d4rl
             import gym
             env = gym.make(env_name)
+            
         env = EpisodeMonitor(env)
-        dataset = d4rl_utils.get_dataset(env, normalize_states=config.Env.normalize_states, normalize_rewards=config.Env.normalize_rewards)
-        
         os.environ['CUDA_VISIBLE_DEVICES']="4" # for headless server
         env.render(mode='rgb_array', width=200, height=200)
         os.environ['CUDA_VISIBLE_DEVICES']="0,1,2,3,4"
@@ -38,5 +40,14 @@ def setup_expert_dataset(config):
             env.viewer.cam.lookat[1] = 12
             env.viewer.cam.distance = 50
             env.viewer.cam.elevation = -90
-
-    return env, dataset
+    else:
+        env = gym.make(config.Env.agent_env)     
+    print(f"expert data: {dataset_expert['observations'].shape[0]}")
+    print(f"agent data: {dataset_agent['observations'].shape[0]}")
+    
+    # if config.Env.normalize_states:
+    #     observations_all = jnp.concatenate([replay_buffer_e.state, replay_buffer_o.state]).astype(np.float32)
+    #     state_mean = jnp.mean(observations_all, 0)
+    #     state_std = jnp.std(observations_all, 0) + 1e-3
+        
+    return env, dataset_expert, dataset_agent

@@ -310,6 +310,7 @@ class GaussianPolicy(eqx.Module):
         # Film conditioning??
         x = jnp.concatenate([state, intentions], axis=-1)
         means, log_std = jnp.split(self.net(x), 2)
+        means = jnp.clip(means, -9.0, 9.0)
         log_stds = jnp.clip(log_std, self.log_std_min, self.log_std_max)
         dist = FixedDistrax(distrax.MultivariateNormalDiag, loc=means,
                             scale_diag=jnp.exp(log_stds))
@@ -336,6 +337,7 @@ class GaussianIntentPolicy(eqx.Module):
         
     def __call__(self, state):
         means = self.net(state)
+        means = jnp.clip(means, -9.0, 9.0)
         log_stds = jnp.clip(self.log_stds, self.log_std_min, self.log_std_max)
         dist = FixedDistrax(distrax.MultivariateNormalDiag, loc=means,
                             scale_diag=jnp.exp(log_stds))

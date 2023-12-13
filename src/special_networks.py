@@ -26,17 +26,16 @@ class MultilinearVF_EQX(eqx.Module):
     T_net: eqx.Module
     matrix_a: eqx.Module
     matrix_b: eqx.Module
-    gotil_psi: Any = None
+    gotil: Any = None
     
     def __init__(self, key, state_dim, hidden_dims, pretrained_phi=None, pretrained_psi=None, pretrained_T=None,pretrained_a=None,pretrained_b=None):
-        key, phi_key, psi_key, t_key, matrix_a_key, matrix_b_key, gotil_mlp_key = jax.random.split(key, 7)
+        key, phi_key, psi_key, t_key, matrix_a_key, matrix_b_key, gotil_key = jax.random.split(key, 7)
         
         network_cls = functools.partial(eqxnn.MLP, in_size=state_dim, out_size=hidden_dims[-1],
-                                        width_size=hidden_dims[0], depth=len(hidden_dims),
-                                        final_activation=jax.nn.gelu)
-        self.gotil_psi = eqxnn.MLP(
-            in_size=hidden_dims[-1], out_size=hidden_dims[-1], width_size=hidden_dims[-1], depth=len(hidden_dims), key=gotil_mlp_key)
-            
+                                        width_size=hidden_dims[0], depth=len(hidden_dims), final_activation=jax.nn.relu)
+        
+        self.gotil = eqxnn.Linear(in_features=hidden_dims[0], out_features=1, key=gotil_key)
+        
         if pretrained_phi is None:
             self.phi_net = network_cls(key=phi_key)
         else:
@@ -48,7 +47,7 @@ class MultilinearVF_EQX(eqx.Module):
             self.psi_net = pretrained_psi
         
         T_cls = functools.partial(eqxnn.MLP, in_size=hidden_dims[-1], out_size=hidden_dims[-1], width_size=hidden_dims[0], depth=len(hidden_dims),
-                                        final_activation=jax.nn.gelu)
+                                        final_activation=jax.nn.relu)
         network_cls_a = functools.partial(eqxnn.Linear, in_features=hidden_dims[-1], out_features=hidden_dims[-1])
         network_cls_b = functools.partial(eqxnn.Linear, in_features=hidden_dims[-1], out_features=hidden_dims[-1])
         
@@ -105,11 +104,11 @@ class MultilinearVF_EQX(eqx.Module):
         v = (phi_z * psi_z).sum(axis=-1)
         return v
     
-    # NOT WORKING
-    def gotil(self, observations, intents):
+    def gotil_fn(self, observations, intents):
         phi = self.phi_net(observations)
         Tz = self.T_net(intents)
-        phi_z = self.matrix_a(Tz * phi)
-        #psi = self.gotil_psi(phi_z)
-        v = (phi_z).sum(axis=-1)
+        phi_z = jax.lax.stop_gradient(self.matrix_a(Tz * phi))
+        psi_z = jax.lax.stop_gradient(self.matrix_b(Tz))
+        v = self.gotil(phi_z * psi_z).squeeze(axis=-1)
+        v = jax.nn.softplus(v)
         return v
