@@ -2,13 +2,11 @@ from jaxrl_m.typing import *
 import flax
 import flax.linen as nn
 import jax
-import jax.numpy as jnp
 from jax import tree_util
 import optax
 import functools
 import equinox as eqx
 import dataclasses
-
 nonpytree_field = functools.partial(flax.struct.field, pytree_node=False)
 
 
@@ -78,7 +76,7 @@ class TrainState(flax.struct.PyTreeNode):
         **kwargs,
     ) -> "TrainState":
         if tx is not None:
-            opt_state = tx.init(flax.core.freeze(params))
+            opt_state = tx.init(params)
         else:
             opt_state = None
 
@@ -139,8 +137,7 @@ class TrainState(flax.struct.PyTreeNode):
             and `opt_state` updated by applying `grads`, and additional attributes
             replaced as specified by `kwargs`.
         """
-
-        updates, new_opt_state = self.tx.update(grads, self.opt_state, self.params)
+        updates, new_opt_state = self.tx.update(grads, self.opt_state)
         new_params = optax.apply_updates(self.params, updates)
 
         return self.replace(
@@ -161,7 +158,6 @@ class TrainState(flax.struct.PyTreeNode):
             if pmap_axis is not None:
                 grads = jax.lax.pmean(grads, axis_name=pmap_axis)
                 info = jax.lax.pmean(info, axis_name=pmap_axis)
-
             return self.apply_gradients(grads=grads), info
 
         else:
@@ -200,8 +196,6 @@ class TrainTargetStateEQX(TrainStateEQX):
         return cls(model=model, optim=optim, optim_state=optim_state, target_model=target_model,
                    **kwargs)
 
-    #def update_gotil(self, grads):
-        #
     
     def soft_update(self, tau: float = 0.005):
         model_params = eqx.filter(self.model, eqx.is_array)

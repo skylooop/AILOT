@@ -129,6 +129,9 @@ class FixedDistrax(eqx.Module):
     def log_prob(self, x):
         return self.cls(*self.args, **self.kwargs).log_prob(x)
 
+    def sample_n(self, key, n):
+        return self.cls(*self.args, **self.kwargs)._sample_n(key=key, n=n)
+    
     def mean(self):
         return self.cls(*self.args, **self.kwargs).mean()
     
@@ -289,12 +292,21 @@ class VNet(eqx.Module):
     def __call__(self, obs):
         return self.net(obs)
 
+class TanhNormal(distrax.Transformed):
+    def __init__(self, loc, scale):
+        normal_dist = distrax.Normal(loc, scale)
+        tanh_bijector = distrax.Tanh()
+        super().__init__(distribution=normal_dist, bijector=tanh_bijector)
+
+    def mean(self):
+        return self.bijector.forward(self.distribution.mean())
+
+
 class GaussianPolicy(eqx.Module):
     net: eqx.Module
     
-    log_std_min: int = -5.0
+    log_std_min: int = -20.0
     log_std_max: int = 2.0
-    temperature: float = 10.0
     
     def __init__(self, key, state_dim, intents_dim, action_dim, hidden_dims):
         key, key_means, key_log_std = jax.random.split(key, 3)
@@ -310,18 +322,17 @@ class GaussianPolicy(eqx.Module):
         # Film conditioning??
         x = jnp.concatenate([state, intentions], axis=-1)
         means, log_std = jnp.split(self.net(x), 2)
-        means = jnp.clip(means, -9.0, 9.0)
         log_stds = jnp.clip(log_std, self.log_std_min, self.log_std_max)
-        dist = FixedDistrax(distrax.MultivariateNormalDiag, loc=means,
-                            scale_diag=jnp.exp(log_stds))
+        dist = FixedDistrax(TanhNormal, means, jnp.exp(log_stds))
+        # dist = FixedDistrax(distrax.MultivariateNormalDiag, loc=means,
+        #                     scale_diag=jnp.exp(log_stds))
         return dist
 
 class GaussianIntentPolicy(eqx.Module):
     net: eqx.Module
     
-    log_std_min: int = -5.0
+    log_std_min: int = -20.0
     log_std_max: int = 2.0
-    temperature: float = 10.0
     log_stds: Array
     
     def __init__(self, key, state_dim, intent_dim, hidden_dims):
@@ -337,7 +348,6 @@ class GaussianIntentPolicy(eqx.Module):
         
     def __call__(self, state):
         means = self.net(state)
-        means = jnp.clip(means, -9.0, 9.0)
         log_stds = jnp.clip(self.log_stds, self.log_std_min, self.log_std_max)
         dist = FixedDistrax(distrax.MultivariateNormalDiag, loc=means,
                             scale_diag=jnp.exp(log_stds))
@@ -422,6 +432,52 @@ def update_agent(agent, batch, buffer_key):
 
     rng, new_buffer_key = jax.random.split(buffer_key, 2)
     return dataclasses.replace(agent, v_learner=updated_v_learner, q_learner=updated_q_learner, actor_learner=updated_actor_learner), new_buffer_key, {**aux_v, **aux_q, **aux_actor}
+
+def create_iql_eqx_learner(seed, state_dim, action_dim, lr_schedule, max_timesteps,hidden_dims=(256, 256, 256),
+                           temperature=9,
+                           actor_lr:float=3e-4, value_lr:float=3e-4, critic_lr:float=3e-4, expectile=0.9):
+    
+    key = jax.random.PRNGKey(seed=seed)
+    key, q_key, val_key_main_model, actor_key = jax.random.split(key, 4)
+    
+    @eqx.filter_vmap
+    def ensemblize(keys):
+        return QNet(key=keys, state_dim=state_dim, action_dim=action_dim)
+    
+    if lr_schedule == "cosine":
+        schedule_fn = optax.cosine_decay_schedule(-actor_lr, max_timesteps)
+        actor_tx = optax.chain(optax.scale_by_adam(), optax.scale_by_schedule(schedule_fn))
+        print("Using Cosine scheduler")
+    else:
+        actor_tx = optax.adam(actor_lr)
+
+    q_learner = TrainTargetState.create(
+        model=ensemblize(jax.random.split(q_key, 2)),
+        target_model=ensemblize(jax.random.split(q_key, 2)),
+        optim=optax.adam(learning_rate=critic_lr)
+    )
+    v_learner = TrainState.create(
+        model=VNet(key=val_key_main_model, state_dim=state_dim, use_icvf=False),
+        optim=optax.adam(learning_rate=value_lr)
+    )
+    
+    actor_learner = TrainState.create(
+        model=GaussianPolicy(key=actor_key,
+                             state_dim=state_dim,
+                             action_dim=action_dim,
+                             hidden_dims=hidden_dims),
+        optim=actor_tx
+    )
+    
+    iql_agent = IQLagent(
+        q_learner=q_learner,
+        v_learner=v_learner,
+        actor_learner=actor_learner,
+        expectile=expectile,
+        discount=0.99,
+        temperature=temperature,
+    )
+    return iql_agent
 
 
 @pyrallis.wrap()

@@ -1,9 +1,9 @@
 # OS params
 import os
-os.environ["HYDRA_FULL_ERROR"] = "1"
-os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 import warnings
 warnings.filterwarnings("ignore")
+os.environ["HYDRA_FULL_ERROR"] = "1"
+os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 
 import hydra
 import warnings
@@ -25,17 +25,13 @@ from tqdm.auto import tqdm
 from jaxrl_m.wandb import setup_wandb
 import matplotlib.pyplot as plt
 
-
 import d4rl
 from src.agents import icvf, gotil
 from src.agents.gotil import evaluate_with_trajectories_gotil
-from src.agents.icvf import update, eval_ensemble_gotil, eval_ensemble_icvf, eval_ensemble_icvf_viz
-from src.gc_dataset import GCSDataset
+from src.agents.icvf import eval_ensemble_gotil, eval_ensemble_icvf, eval_ensemble_icvf_viz
+from AILOT.src.gc_dataset_old import ICVFExpertDS
 from src.utils import record_video
-from src import d4rl_utils, d4rl_ant, ant_diagnostics, viz_utils
-
-from src.generate_antmaze_random import get_dataset, combine_ds
-from jaxrl_m.evaluation import supply_rng, evaluate_with_trajectories
+from src import d4rl_utils, d4rl_ant, viz_utils
 
 # Utilities from root folder
 from utils.ds_builder import setup_datasets
@@ -111,12 +107,13 @@ def get_traj_v_icvf(agent, trajectory):
 @hydra.main(version_base="1.4", config_path=str(ROOT/"configs"), config_name="entry.yaml")
 def main(config: DictConfig):
     print_config_tree(config)
-    setup_wandb(hyperparam_dict=dict(config),
-                project=config.logger.project,
-                group=config.logger.group,
-                name=None)
+    # setup_wandb(hyperparam_dict=dict(config),
+    #             project=config.logger.project,
+    #             group=config.logger.group,
+    #             name=None)
     
-    env, expert_dataset, agent_dataset = setup_datasets(config)
+    env, expert_dataset, agent_dataset = setup_datasets(expert_env="antmaze-umaze-v2",
+                                                        agent_env="antmaze-umaze-v2", expert_num=1)
     env.reset()
     
     rng = jax.random.PRNGKey(config.seed)
@@ -132,7 +129,7 @@ def main(config: DictConfig):
         
     mixed_ds = d4rl_utils.get_dataset(env, mixed_ds=False)
     subgoals = expert_trajectory[[40, 85, 150, 189]]
-    agent_gc_dataset = GCSDataset(mixed_ds, **dict(config.GoalDS), discount=config.Env.discount,
+    agent_gc_dataset = ICVFExpertDS(mixed_ds, **dict(config.GoalDS), discount=config.Env.discount,
                                   expert_trajectory=expert_trajectory, expert_subgoals=expert_trajectory)
     
     example_batch = expert_dataset.sample(1)

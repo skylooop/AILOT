@@ -71,6 +71,17 @@ class MultilinearVF_EQX(eqx.Module):
         v = (phi_z * psi_z).sum(axis=-1)
         return v
     
+    def icvf_zzz(self, observations, outcomes, intents):
+        phi = observations
+        psi = outcomes
+        z = intents
+        Tz = self.T_net(z)
+        
+        phi_z = self.matrix_a(Tz * phi)
+        psi_z = self.matrix_b(Tz * psi)
+        v = (phi_z * psi_z).sum(axis=-1)
+        return v
+    
     def icvf_zz(self, observations, outcomes, intents):
         phi = self.phi_net(observations)
         psi = outcomes
@@ -86,7 +97,7 @@ class MultilinearVF_EQX(eqx.Module):
         phi = self.phi_net(observations)
         psi = self.psi_net(outcomes)
         z = self.psi_net(intents)
-        Tz = self.T_net(z)
+        Tz = self.T_net(z) #actions (film layer)
         
         phi_z = self.matrix_a(Tz * phi)
         psi_z = self.matrix_b(Tz * psi)
@@ -111,4 +122,15 @@ class MultilinearVF_EQX(eqx.Module):
         psi_z = jax.lax.stop_gradient(self.matrix_b(Tz))
         v = self.gotil(phi_z * psi_z).squeeze(axis=-1)
         v = jax.nn.softplus(v)
+        return v
+
+    def icvf_state_latent(self, observations, outcomes, intents):
+        phi = observations
+        psi = self.psi_net(outcomes)
+        z = self.psi_net(intents)
+        Tz = self.T_net(z)
+        
+        phi_z = self.matrix_a(Tz * phi)
+        psi_z = self.matrix_b(Tz * psi)
+        v = (phi_z * psi_z).sum(axis=-1)
         return v
