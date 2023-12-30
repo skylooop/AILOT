@@ -25,7 +25,8 @@ class NormalTanhPolicy(nn.Module):
     log_std_min: Optional[float] = None
     log_std_max: Optional[float] = None
     tanh_squash_distribution: bool = True
-
+    latent: bool = False
+    
     @nn.compact
     def __call__(self,
                  observations: jnp.ndarray,
@@ -50,7 +51,7 @@ class NormalTanhPolicy(nn.Module):
         log_std_max = self.log_std_max or LOG_STD_MAX
         log_stds = jnp.clip(log_stds, log_std_min, log_std_max)
 
-        if not self.tanh_squash_distribution:
+        if not self.tanh_squash_distribution and not self.latent:
             means = nn.tanh(means)
 
         base_dist = tfd.MultivariateNormalDiag(loc=means,

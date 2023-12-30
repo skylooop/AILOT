@@ -317,15 +317,16 @@ class GaussianPolicy(eqx.Module):
                               depth=len(hidden_dims),
                               activation=jax.nn.gelu,
                               key=key_means)
-        
-    def __call__(self, state, intentions):
+    
+    def sample_actions(self, state, intentions, temperature):
+        return self(state, intentions, temperature)
+    
+    def __call__(self, state, intentions, temperature=1.0):
         # Film conditioning??
         x = jnp.concatenate([state, intentions], axis=-1)
         means, log_std = jnp.split(self.net(x), 2)
         log_stds = jnp.clip(log_std, self.log_std_min, self.log_std_max)
-        dist = FixedDistrax(TanhNormal, means, jnp.exp(log_stds))
-        # dist = FixedDistrax(distrax.MultivariateNormalDiag, loc=means,
-        #                     scale_diag=jnp.exp(log_stds))
+        dist = FixedDistrax(TanhNormal, means, jnp.exp(log_stds) * temperature)
         return dist
 
 class GaussianIntentPolicy(eqx.Module):

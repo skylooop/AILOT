@@ -39,7 +39,6 @@ def get_dataset(env: gym.Env, expert: bool = False,
             masks = 1.0 - dataset['terminals'].astype(np.float32)
         dataset['masks'] = masks
         dataset['dones'] = dones_float
-        
         if expert:
             trajectories = split_into_trajectories(
                         observations=dataset['observations'].astype(jnp.float32),
@@ -69,6 +68,8 @@ def get_dataset(env: gym.Env, expert: bool = False,
                        'masks': expert_demos[3],
                        'dones': 1-expert_demos[3]}
         else:
+            if "antmaze" in env.spec.id:
+                dataset['rewards'] -= 1.0
             if normalize_agent_states:
                 dataset['observations'], dataset['next_observations'], mean, std = normalize_states(dataset['observations'], dataset['next_observations'])
                 print(f"MEAN: {mean}, STD: {std}")
@@ -140,6 +141,36 @@ def split_into_trajectories(observations, actions, rewards, masks, dones_float,
       trajs.append([])
 
   return trajs
+
+def load_trajectories(name: str, rewards, fix_antmaze_timeout=True):
+    env = gym.make(name)
+    if "antmaze" in name and fix_antmaze_timeout:
+        dataset = qlearning_dataset_with_timeouts(env)
+    else:
+        dataset = d4rl.qlearning_dataset(env)
+        dones_float = np.zeros_like(rewards)
+    dones_float = np.zeros_like(rewards)
+    for i in range(len(dones_float) - 1):
+        if np.linalg.norm(dataset['observations'][i + 1] -
+                          dataset['next_observations'][i]
+                         ) > 1e-6 or dataset['terminals'][i] == 1.0:
+          dones_float[i] = 1
+        else:
+          dones_float[i] = 0
+    dones_float[-1] = 1
+    
+    if 'realterminals' in dataset:
+        masks = 1.0 - dataset['realterminals'].astype(np.float32)
+    else:
+        masks = 1.0 - dataset['terminals'].astype(np.float32)
+    traj = split_into_trajectories(
+          observations=dataset['observations'].astype(np.float32),
+          actions=dataset['actions'].astype(np.float32),
+          rewards=rewards.astype(np.float32), #dataset['rewards'].astype(np.float32),
+          masks=masks,
+          dones_float=dones_float.astype(np.float32),
+          next_observations=dataset['next_observations'].astype(np.float32))
+    return traj
 
 def qlearning_dataset_with_timeouts(env,
                                     dataset=None,
