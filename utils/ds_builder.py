@@ -1,6 +1,6 @@
 import os
 
-from jaxrl_m.evaluation import EpisodeMonitor
+from jaxrl_m.evaluation import EpisodeMonitor, SinglePrecision
 import jax.numpy as jnp
 import jax
 
@@ -92,13 +92,21 @@ def merge_trajectories(trajs):
       flat.append(transition)
   return jax.tree_util.tree_map(lambda *xs: np.stack(xs), *flat)
 
-def setup_datasets(expert_env_name: str, agent_env_name: str, expert_num: int, normalize_agent_states): #taking all trajs from agent ds
+
+
+
+def setup_datasets(expert_env_name: str, agent_env_name: str, expert_num: int, normalize_agent_states, seed=42):
     expert_env = gym.make(expert_env_name)
     agent_env = gym.make(agent_env_name)
     
+    agent_env.seed(seed)
+    agent_env.action_space.seed(seed)
+    agent_env.observation_space.seed(seed)
+    
+    agent_env = EpisodeMonitor(agent_env)
+    agent_env = SinglePrecision(agent_env)
+    
     if 'antmaze' in agent_env_name:
-        agent_env = EpisodeMonitor(agent_env)
-        
         os.environ['CUDA_VISIBLE_DEVICES']="4" # for headless server
         agent_env.render(mode='rgb_array', width=200, height=200)
         os.environ['CUDA_VISIBLE_DEVICES']="0,1,2,3,4"
