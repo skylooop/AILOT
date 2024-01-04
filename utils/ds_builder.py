@@ -107,26 +107,26 @@ def setup_datasets(expert_env_name: str, agent_env_name: str, expert_num: int, n
     agent_env = SinglePrecision(agent_env)
     
     if 'antmaze' in agent_env_name:
-        os.environ['CUDA_VISIBLE_DEVICES']="4" # for headless server
-        agent_env.render(mode='rgb_array', width=200, height=200)
-        os.environ['CUDA_VISIBLE_DEVICES']="0,1,2,3,4"
+        # os.environ['CUDA_VISIBLE_DEVICES']="1" # for headless server
+        # agent_env.render(mode='rgb_array', width=200, height=200)
+        os.environ['CUDA_VISIBLE_DEVICES']="0,1"
         
-        if 'large' in agent_env.spec.id:
-            agent_env.viewer.cam.lookat[0] = 18
-            agent_env.viewer.cam.lookat[1] = 12
-            agent_env.viewer.cam.distance = 50
-            agent_env.viewer.cam.elevation = -90
+        # if 'large' in agent_env.spec.id:
+        #     agent_env.viewer.cam.lookat[0] = 18
+        #     agent_env.viewer.cam.lookat[1] = 12
+        #     agent_env.viewer.cam.distance = 50
+        #     agent_env.viewer.cam.elevation = -90
 
-        elif 'ultra' in agent_env.spec.id:
-            agent_env.viewer.cam.lookat[0] = 26
-            agent_env.viewer.cam.lookat[1] = 18
-            agent_env.viewer.cam.distance = 70
-            agent_env.viewer.cam.elevation = -90
-        else:
-            agent_env.viewer.cam.lookat[0] = 18
-            agent_env.viewer.cam.lookat[1] = 12
-            agent_env.viewer.cam.distance = 50
-            agent_env.viewer.cam.elevation = -90
+        # elif 'ultra' in agent_env.spec.id:
+        #     agent_env.viewer.cam.lookat[0] = 26
+        #     agent_env.viewer.cam.lookat[1] = 18
+        #     agent_env.viewer.cam.distance = 70
+        #     agent_env.viewer.cam.elevation = -90
+        # else:
+        #     agent_env.viewer.cam.lookat[0] = 18
+        #     agent_env.viewer.cam.lookat[1] = 12
+        #     agent_env.viewer.cam.distance = 50
+        #     agent_env.viewer.cam.elevation = -90
         
     dataset_expert = get_dataset(expert_env, expert=True, num_episodes=expert_num)
     dataset_agent, mean, std = get_dataset(agent_env, expert=False, normalize_agent_states=normalize_agent_states)
